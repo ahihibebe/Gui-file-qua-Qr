@@ -1,1 +1,85 @@
+name: Build APK
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+# Cần quyền ghi để tạo GitHub Release
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Nếu repo có file .zip (vd QRSend.zip) thì tự giải nén rồi build,
+      # nếu mã nguồn đã giải nén sẵn trong repo thì build thẳng.
+      - name: Chuẩn bị mã nguồn
+        id: src
+        run: |
+          set -e
+          if [ -f settings.gradle.kts ] || [ -f settings.gradle ]; then
+            DIR=.
+          else
+            ZIP=$(ls -t ./*.zip 2>/dev/null | head -n1 || true)
+            if [ -z "$ZIP" ]; then
+              echo "Không thấy file .zip hay mã nguồn Gradle trong repo"
+              exit 1
+            fi
+            echo "Giải nén: $ZIP"
+            rm -rf _src && mkdir _src && unzip -q "$ZIP" -d _src
+            S=$(find _src -name settings.gradle.kts | head -n1)
+            if [ -z "$S" ]; then S=$(find _src -name settings.gradle | head -n1); fi
+            if [ -z "$S" ]; then
+              echo "Trong zip không có settings.gradle(.kts)"
+              exit 1
+            fi
+            DIR=$(dirname "$S")
+          fi
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build release APK
+        working-directory: ${{ steps.src.outputs.dir }}
+        run: gradle assembleRelease --no-daemon
+
+      # Đổi tên APK theo phiên bản, vd QRSend-v1.1.0.apk
+      - name: Đặt tên file APK
+        id: apk
+        run: |
+          set -e
+          DIR="${{ steps.src.outputs.dir }}"
+          VER=$(grep -m1 'versionName' "$DIR/app/build.gradle.kts" | sed -E 's/.*"([^"]+)".*/\1/')
+          OUT="QRSend-v${VER}.apk"
+          cp "$DIR"/app/build/outputs/apk/release/*.apk "$OUT"
+          echo "file=$OUT" >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QRSend-APK
+          path: ${{ steps.apk.outputs.file }}
+
+      # Đăng APK lên mục Releases của repo để tải trực tiếp
+      - name: Tạo GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="v${{ steps.apk.outputs.ver }}-build${{ github.run_number }}"
+          gh release create "$TAG" "${{ steps.apk.outputs.file }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "QR Send v${{ steps.apk.outputs.ver }} (build ${{ github.run_number }})" \
+            --notes "Bản APK release, ký bằng keystore cố định nên cài đè được lên bản cũ."
