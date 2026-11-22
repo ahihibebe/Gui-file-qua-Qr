@@ -36,7 +36,9 @@
 1. Tạo file `.github/workflows/build-apk.yml` trong repo (dùng file `build-apk.yml` đi kèm).
 2. Upload `QRSend.zip` (hoặc toàn bộ mã nguồn đã giải nén) lên thư mục gốc của repo.
 3. Vào tab **Actions** → **Build APK** → **Run workflow**.
-4. Chạy xong, tải `QRSend-APK` ở mục **Artifacts**, giải nén ra file `.apk` và cài.
+4. Chạy xong, file APK release có ở **hai nơi**:
+   - Mục **Releases** của repo (bên phải trang chính): tải trực tiếp `QRSend-vX.Y.Z.apk`.
+   - Mục **Artifacts** của lần chạy: `QRSend-APK` (dạng zip).
 
 APK được ký bằng keystore cố định `app/qrsend.keystore` nên các bản sau **cài đè** được lên bản trước.
 
